@@ -2,7 +2,7 @@
 
 Runs with a Windows Python (tkinter + Pillow); training itself happens inside WSL via wsl.exe.
 Each dataset is a profile in PROFILES; mnist_gui.pyw / cifar10_gui.pyw just call main("<profile>").
-Launch from the repo's WSL path (e.g. \\\\wsl$\\Ubuntu-24.04\\home\\<user>\\mnist-trainer\\gui\\mnist_gui.pyw)
+Launch from the repo's WSL path (e.g. \\\\wsl$\\Ubuntu-24.04\\home\\<user>\\cnn-trainer\\gui\\mnist_gui.pyw)
 and the distro and project folder are picked up from that path automatically.
 
 Training scripts talk to this window with "@@{json}" lines (see ../jsonlog.py).

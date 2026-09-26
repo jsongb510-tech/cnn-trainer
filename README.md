@@ -1,4 +1,4 @@
-# MNIST Trainer
+# CNN Trainer
 
 Windows 11 + WSL2(Ubuntu)의 NVIDIA GPU로 **MNIST**(손글씨 숫자)와 **CIFAR-10**(컬러 사진 10종) 분류 CNN을 학습하는 예제 모음입니다.
 옵션을 바꿔 가며 학습하고, 결과(정확도, 학습 곡선, 혼동 행렬, 틀린 이미지)를 바로 볼 수 있는 **데스크톱 창 프로그램**이 포함되어 있습니다.
@@ -49,8 +49,8 @@ NVIDIA 드라이버는 Windows에만 설치하면 됩니다 (WSL 안에는 설�
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-git clone https://github.com/jsongb510-tech/mnist-trainer.git
-cd mnist-trainer
+git clone https://github.com/jsongb510-tech/cnn-trainer.git
+cd cnn-trainer
 
 # PyTorch 환경 (기본)
 uv venv --python 3.12 .venv
@@ -92,8 +92,8 @@ uv pip install --python C:\path\to\gui-venv\Scripts\python.exe pillow
 창 프로그램은 **WSL 안의 저장소 경로로 실행**합니다. WSL 배포판 이름과 저장소 위치를 경로에서 자동으로 알아냅니다.
 
 ```bash
-C:\path\to\gui-venv\Scripts\pythonw.exe \\wsl$\Ubuntu-24.04\home\<user>\mnist-trainer\gui\mnist_gui.pyw
-C:\path\to\gui-venv\Scripts\pythonw.exe \\wsl$\Ubuntu-24.04\home\<user>\mnist-trainer\gui\cifar10_gui.pyw
+C:\path\to\gui-venv\Scripts\pythonw.exe \\wsl$\Ubuntu-24.04\home\<user>\cnn-trainer\gui\mnist_gui.pyw
+C:\path\to\gui-venv\Scripts\pythonw.exe \\wsl$\Ubuntu-24.04\home\<user>\cnn-trainer\gui\cifar10_gui.pyw
 ```
 
 바탕화면 바로 가기를 만들 때는 위 명령을 대상으로, 아이콘은 `gui/mnist_gui.ico` / `gui/cifar10_gui.ico`를 지정하면 됩니다
