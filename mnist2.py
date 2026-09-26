@@ -1,7 +1,5 @@
 import argparse
-import base64
 import importlib.util
-import json
 import os
 import time
 
@@ -14,8 +12,9 @@ import keras
 import numpy as np
 from keras import layers
 
+from jsonlog import emit, mistakes
+
 NUM_CLASSES = 10
-MAX_MISTAKES = 500  # cap on misclassified images sent to the GUI
 
 
 def parse_args():
@@ -27,10 +26,6 @@ def parse_args():
     p.add_argument("--json", action="store_true",
                    help="print machine-readable @@{...} progress lines instead of Keras logs (used by the GUI)")
     return p.parse_args()
-
-
-def emit(kind, **data):
-    print("@@" + json.dumps({"type": kind, **data}), flush=True)
 
 
 class JsonProgress(keras.callbacks.Callback):
@@ -75,19 +70,6 @@ def print_confusion_matrix(cm):
         print(f"{r:>4} " + "".join(f"{v:>{width}}" for v in row))
 
 
-def mistakes(images, y_true, probs, limit):
-    """Misclassified test images, most confidently wrong first. Pixels are base64 raw 28x28 uint8."""
-    y_pred = probs.argmax(axis=1)
-    wrong = np.flatnonzero(y_pred != y_true)
-    wrong = wrong[np.argsort(-probs[wrong, y_pred[wrong]])]
-    return int(len(wrong)), [
-        {"index": int(i), "true": int(y_true[i]), "pred": int(y_pred[i]),
-         "conf": float(probs[i, y_pred[i]]), "true_prob": float(probs[i, y_true[i]]),
-         "img": base64.b64encode(images[i].tobytes()).decode("ascii")}
-        for i in wrong[:limit]
-    ]
-
-
 def device_info():
     backend = keras.backend.backend()
     if backend == "torch":
@@ -104,7 +86,8 @@ def main():
     args = parse_args()
     backend, device = keras.backend.backend(), device_info()
     if args.json:
-        emit("start", keras=keras.__version__, backend=backend, device=device, epochs=args.epochs,
+        emit("start", framework=f"Keras {keras.__version__} · {backend} 엔진", keras=keras.__version__,
+             backend=backend, device=device, epochs=args.epochs,
              batch_size=args.batch_size, lr=args.lr, dropout=args.dropout)
     else:
         print(f"Keras {keras.__version__} | backend: {backend} | device: {device}")
@@ -134,7 +117,7 @@ def main():
 
     model.save("mnist2_cnn.keras")
     if args.json:
-        n_wrong, items = mistakes(x_test_raw, y_test, probs, MAX_MISTAKES)
+        n_wrong, items = mistakes(x_test_raw, y_test, probs)
         emit("mistakes", total=n_wrong, items=items)
         emit("result", accuracy=correct / total, correct=correct, total=total, confusion=cm.tolist(),
              train_seconds=train_seconds, model_path="mnist2_cnn.keras")
