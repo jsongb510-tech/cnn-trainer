@@ -1,8 +1,11 @@
-"""Imagenette (10 easy ImageNet classes, full-size photos) classification with ResNet in PyTorch.
+"""Imagenette / Imagewoof classification with ResNet in PyTorch (fast.ai's 10-class ImageNet subsets).
+
+Imagenette: 10 easy-to-tell-apart classes (fish, dog, church, parachute, ...).
+Imagewoof:  10 dog breeds - much harder, the classes look alike.
 
 Train from scratch, or fine-tune ImageNet-pretrained weights with --pretrained (transfer learning).
-Note: Imagenette's classes are a subset of ImageNet, so pretrained weights have already seen these
-kinds of photos - that's why transfer learning reaches ~99% here within a few epochs.
+Note: both datasets' classes are a subset of ImageNet, so pretrained weights have already seen these
+kinds of photos - that's why transfer learning does so well here within a few epochs.
 """
 import argparse
 import io
@@ -16,18 +19,34 @@ import torch.nn.functional as F
 from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
+from torchvision.datasets.utils import download_and_extract_archive
 
 from jsonlog import emit, mistakes
 
-CLASSES = ("tench", "English springer", "cassette player", "chain saw", "church",
-           "French horn", "garbage truck", "gas pump", "golf ball", "parachute")
+# ImageNet class id (= folder name) -> class name, per dataset. Folders are read in sorted id order.
+DATASETS = {
+    "imagenette": {
+        "n01440764": "tench", "n02102040": "English springer", "n02979186": "cassette player",
+        "n03000684": "chain saw", "n03028079": "church", "n03394916": "French horn",
+        "n03417042": "garbage truck", "n03425413": "gas pump", "n03445777": "golf ball",
+        "n03888257": "parachute",
+    },
+    "imagewoof": {
+        "n02086240": "Shih-Tzu", "n02087394": "Rhodesian ridgeback", "n02088364": "beagle",
+        "n02089973": "English foxhound", "n02093754": "Border terrier", "n02096294": "Australian terrier",
+        "n02099601": "golden retriever", "n02105641": "Old English sheepdog", "n02111889": "Samoyed",
+        "n02115641": "dingo",
+    },
+}
+URLS = {"imagewoof": "https://s3.amazonaws.com/fast-ai-imageclas/imagewoof2-320.tgz"}
 MEAN, STD = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)  # ImageNet statistics
 DATA = Path("data")
 THUMB = 128  # side of the JPEG thumbnails of misclassified images sent to the GUI
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="ResNet on Imagenette")
+    p = argparse.ArgumentParser(description="ResNet on Imagenette / Imagewoof")
+    p.add_argument("--dataset", choices=tuple(DATASETS), default="imagenette")
     p.add_argument("--model", choices=("resnet18", "resnet50"), default="resnet18")
     p.add_argument("--pretrained", action="store_true", help="start from ImageNet weights (transfer learning)")
     p.add_argument("--epochs", type=int, default=20)
@@ -42,19 +61,22 @@ def parse_args():
     return p.parse_args()
 
 
-def build_model(name, pretrained):
+def build_model(name, pretrained, num_classes):
     weights = {"resnet18": models.ResNet18_Weights.IMAGENET1K_V1,
                "resnet50": models.ResNet50_Weights.IMAGENET1K_V2}[name] if pretrained else None
     model = getattr(models, name)(weights=weights)
-    model.fc = nn.Linear(model.fc.in_features, len(CLASSES))  # new 10-class head
+    model.fc = nn.Linear(model.fc.in_features, num_classes)  # new head for our classes
     return model
 
 
-def load_data(img_size):
-    """ImageFolder datasets for train/val (downloads Imagenette 320px on first use, ~330 MB)."""
-    root = DATA / "imagenette2-320"
+def load_data(dataset, img_size):
+    """ImageFolder datasets for train/val (downloads the 320px version on first use, ~330 MB)."""
+    root = DATA / f"{dataset}2-320"
     if not root.exists():
-        datasets.Imagenette(str(DATA), split="train", size="320px", download=True)
+        if dataset == "imagenette":
+            datasets.Imagenette(str(DATA), split="train", size="320px", download=True)
+        else:
+            download_and_extract_archive(URLS[dataset], str(DATA))
     resize = round(img_size * 256 / 224)  # usual ImageNet eval: resize, then center crop
     train_tf = transforms.Compose([
         transforms.RandomResizedCrop(img_size, scale=(0.35, 1.0)),
@@ -66,8 +88,12 @@ def load_data(img_size):
         transforms.Resize(resize), transforms.CenterCrop(img_size), transforms.ToTensor(),
         transforms.Normalize(MEAN, STD),
     ])
-    return (datasets.ImageFolder(str(root / "train"), train_tf),
-            datasets.ImageFolder(str(root / "val"), test_tf))
+    train_ds = datasets.ImageFolder(str(root / "train"), train_tf)
+    test_ds = datasets.ImageFolder(str(root / "val"), test_tf)
+    expected = sorted(DATASETS[dataset])
+    if train_ds.classes != expected or test_ds.classes != expected:
+        raise RuntimeError(f"unexpected class folders in {root}: {train_ds.classes}")
+    return train_ds, test_ds
 
 
 def thumbnail_jpeg(path):
@@ -79,8 +105,8 @@ def thumbnail_jpeg(path):
     return buf.getvalue()
 
 
-def print_confusion_matrix(cm):
-    short = [c.split()[-1][:6] for c in CLASSES]
+def print_confusion_matrix(cm, classes):
+    short = [c.split()[-1][:6] for c in classes]
     print("rows = true class, cols = predicted class")
     print(" " * 7 + "".join(f"{c:>7}" for c in short))
     for name, row in zip(short, cm.tolist()):
@@ -97,15 +123,17 @@ def main():
         emit("start", framework=f"PyTorch {torch.__version__} · {args.model} · {mode}", device=device_name,
              **{k: v for k, v in vars(args).items() if k != "json"})
     else:
-        print(f"PyTorch {torch.__version__} | device: {device_name} | {args.model}, "
+        print(f"PyTorch {torch.__version__} | device: {device_name} | {args.dataset}, {args.model}, "
               f"{'pretrained' if args.pretrained else 'from scratch'}, {args.img_size}px")
 
-    train_ds, test_ds = load_data(args.img_size)
+    classes = [DATASETS[args.dataset][wnid] for wnid in sorted(DATASETS[args.dataset])]
+    model_path = f"{args.dataset}_resnet.pt"
+    train_ds, test_ds = load_data(args.dataset, args.img_size)
     loader_kw = dict(num_workers=args.workers, pin_memory=True, persistent_workers=args.workers > 0)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, drop_last=True, **loader_kw)
     test_dl = DataLoader(test_ds, batch_size=128, **loader_kw)
 
-    model = build_model(args.model, args.pretrained).to(device, memory_format=torch.channels_last)
+    model = build_model(args.model, args.pretrained, len(classes)).to(device, memory_format=torch.channels_last)
     if args.pretrained:  # discriminative learning rates: gentle on pretrained layers, full speed on the new head
         head = list(model.fc.parameters())
         backbone = [p for n, p in model.named_parameters() if not n.startswith("fc.")]
@@ -162,26 +190,26 @@ def main():
 
     y_true, probs = evaluate()
     y_pred = probs.argmax(1)
-    n = len(CLASSES)
+    n = len(classes)
     cm = torch.bincount(y_true * n + y_pred, minlength=n * n).reshape(n, n)
-    torch.save(model.state_dict(), "imagenette_resnet.pt")
+    torch.save(model.state_dict(), model_path)
     correct, total = int(cm.trace()), int(cm.sum())
     if args.json:
         paths = [p for p, _ in test_ds.samples]
         n_wrong, items = mistakes(None, y_true.numpy(), probs.numpy(), encode=lambda i: thumbnail_jpeg(paths[i]))
         emit("mistakes", total=n_wrong, items=items)
         emit("result", accuracy=correct / total, correct=correct, total=total, confusion=cm.tolist(),
-             train_seconds=train_seconds, model_path="imagenette_resnet.pt")
+             train_seconds=train_seconds, model_path=model_path)
         return
 
     print(f"\nTraining time: {train_seconds:.0f}s")
     print("\nConfusion matrix (validation set):")
-    print_confusion_matrix(cm)
+    print_confusion_matrix(cm, classes)
     print("\nPer-class accuracy:")
-    for i, name in enumerate(CLASSES):
-        print(f"  {name:<16} {100 * cm[i, i] / cm[i].sum():6.2f}%")
+    for i, name in enumerate(classes):
+        print(f"  {name:<20} {100 * cm[i, i] / cm[i].sum():6.2f}%")
     print(f"\nTest accuracy: {100 * correct / total:.2f}% ({correct}/{total})")
-    print("saved model to imagenette_resnet.pt")
+    print(f"saved model to {model_path}")
 
 
 if __name__ == "__main__":

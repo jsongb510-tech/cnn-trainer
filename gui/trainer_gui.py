@@ -118,6 +118,22 @@ PROFILES = {
             Opt("lr", "학습률", "choice", "0.001", "--lr", values=LEARNING_RATES),
             Opt("size", "이미지 크기 (px)", "choice", "224", "--img-size", values=["128", "160", "224", "288"]),
         ]),
+    "imagewoof": Profile(
+        title="Imagewoof 학습기 (개 품종)", app_id="imagewoof_trainer.gui", icon="imagewoof_gui.ico",
+        noun="품종",
+        labels=["시추", "리지백", "비글", "폭스하운드", "보더테리어", "호주테리어", "골든리트리버", "쉽독",
+                "사모예드", "딩고"],
+        image=("JPEG", 128), thumb=150,
+        backends={"PyTorch": ("imagenette_torch.py",
+                              ".venv/bin/python -u imagenette_torch.py --dataset imagewoof --json {args}")},
+        options=[
+            Opt("model", "모델", "choice", "resnet18", "--model", values=["resnet18", "resnet50"]),
+            Opt("pretrained", "전이학습 (ImageNet 사전학습 가중치)", "check", False, "--pretrained"),
+            Opt("epochs", "Epoch 수", "int", "20", "--epochs", lo=1, hi=100),
+            Opt("batch", "배치 크기", "choice", "64", "--batch-size", values=["16", "32", "64", "128"]),
+            Opt("lr", "학습률", "choice", "0.001", "--lr", values=LEARNING_RATES),
+            Opt("size", "이미지 크기 (px)", "choice", "224", "--img-size", values=["128", "160", "224", "288"]),
+        ]),
 }
 
 COLORS = {
@@ -276,10 +292,13 @@ class ConfusionMatrix(Chart):
         tick_font = FONT_S if long_labels else FONT_B
         label_w = max(tkfont.Font(font=tick_font).measure(l) for l in self.labels)
         left = px(34) + label_w
-        cell = max(8, min((w - left - px(14)) // n, (h - px(70) - px(36)) // n))
-        stagger = label_w > cell * 0.9  # column names too wide for a cell: alternate them on two rows
-        top = px(86) if stagger else px(70)
-        cell = max(8, min(cell, (h - top - px(36)) // n))
+        # Column names wider than a cell are staggered over up to 3 rows so neighbours don't overlap.
+        rows, top = 1, px(70)
+        for _ in range(2):  # more label rows -> taller header -> smaller cells -> maybe more rows
+            cell = max(8, min((w - left - px(14)) // n, (h - top - px(36)) // n))
+            rows = min(3, max(1, math.ceil(label_w / (cell * 0.9))))
+            top = px(70) + (rows - 1) * px(16)
+        cell = max(8, min((w - left - px(14)) // n, (h - top - px(36)) // n))
         gx = left + (w - left - px(14) - cell * n) // 2
         gy = top
         self.geom = (gx, gy, cell, n)
@@ -289,12 +308,12 @@ class ConfusionMatrix(Chart):
         off_max = max((cm[i][j] for i in range(n) for j in range(n) if i != j), default=0) or 1
         num_font = ("Malgun Gothic", -max(7, int(cell * 0.3)))
 
-        self.create_text(gx + cell * n / 2, gy - px(44 if stagger else 28), text=f"예측한 {self.noun} →",
+        self.create_text(gx + cell * n / 2, gy - px(28) - (rows - 1) * px(16), text=f"예측한 {self.noun} →",
                          font=FONT_S, fill=COLORS["muted"])
         self.create_text(gx - label_w - px(22), gy + cell * n / 2, text=f"← 실제 {self.noun}", angle=90,
                          font=FONT_S, fill=COLORS["muted"])
         for k, label in enumerate(self.labels):
-            y = gy - px(26 if stagger and k % 2 else 10)
+            y = gy - px(10) - (k % rows) * px(16)
             self.create_text(gx + cell * (k + 0.5), y, text=label, font=tick_font, fill=COLORS["text"])
             self.create_text(gx - px(8), gy + cell * (k + 0.5), text=label, anchor="e", font=tick_font,
                              fill=COLORS["text"])
@@ -696,7 +715,7 @@ class App:
         self.set_status("중지하는 중…")
         self.proc.terminate()
         # Make sure the Linux side is gone too, not just the wsl.exe client.
-        subprocess.run(["wsl.exe", "-d", DISTRO, "--exec", "pkill", "-f", f"{self.script} --json"],
+        subprocess.run(["wsl.exe", "-d", DISTRO, "--exec", "pkill", "-f", f"{self.script} .*--json"],
                        creationflags=CREATE_NO_WINDOW, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def on_close(self):

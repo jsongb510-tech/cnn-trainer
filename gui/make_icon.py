@@ -2,6 +2,7 @@
 mnist_gui.ico      - a pixelated handwritten-style "7" on a blue rounded square
 cifar10_gui.ico    - a 3x3 grid of colorful image tiles on a teal rounded square
 imagenette_gui.ico - a photo (sun over mountains) on an orange rounded square
+imagewoof_gui.ico  - a white paw print on a brown rounded square
 """
 from pathlib import Path
 
@@ -72,10 +73,19 @@ def imagenette_icon():
     return img
 
 
+def imagewoof_icon():
+    img, d = rounded_base((146, 64, 14, 255))
+    white = (255, 255, 255, 255)
+    d.ellipse((78, 118, 178, 206), fill=white)  # main pad
+    for cx, cy in ((70, 100), (106, 66), (150, 66), (186, 100)):  # toes
+        d.ellipse((cx - 22, cy - 26, cx + 22, cy + 26), fill=white)
+    return img
+
+
 def main():
     here = Path(__file__).resolve().parent
     for name, make in (("mnist_gui", mnist_icon), ("cifar10_gui", cifar10_icon),
-                       ("imagenette_gui", imagenette_icon)):
+                       ("imagenette_gui", imagenette_icon), ("imagewoof_gui", imagewoof_icon)):
         out = here / f"{name}.ico"
         make().save(out, sizes=ICO_SIZES)
         print(f"wrote {out}")
