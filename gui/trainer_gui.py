@@ -9,6 +9,7 @@ Training scripts talk to this window with "@@{json}" lines (see ../jsonlog.py).
 """
 import base64
 import ctypes
+import io
 import json
 import math
 import queue
@@ -56,7 +57,7 @@ class Opt:
     label: str
     kind: str  # "int", "float", "choice" or "check"
     default: str | bool
-    flag: str  # for "check": the flag passed when the box is *unchecked*
+    flag: str  # for "check": passed (without a value) when the box differs from its default
     lo: float = 0
     hi: float = 0
     step: float = 1
@@ -70,9 +71,10 @@ class Profile:
     icon: str
     noun: str  # what a class is called in the UI, e.g. "숫자"
     labels: list  # class names shown in the UI
-    image: tuple  # (PIL mode, side length) of the images sent by the script
+    image: tuple  # (PIL mode, side length) of the raw images sent by the script, or ("JPEG", side)
     backends: dict  # UI name -> (script file, shell command template with {args})
     options: list
+    thumb: int = 100  # displayed size of a mistake thumbnail, in 96-dpi pixels
 
 
 PROFILES = {
@@ -101,6 +103,20 @@ PROFILES = {
             Opt("wd", "Weight decay", "choice", "0.0005", "--weight-decay",
                 values=["0", "0.0001", "0.0005", "0.001", "0.005"]),
             Opt("augment", "데이터 증강 (반전·이동)", "check", True, "--no-augment"),
+        ]),
+    "imagenette": Profile(
+        title="Imagenette 학습기", app_id="imagenette_trainer.gui", icon="imagenette_gui.ico",
+        noun="클래스",
+        labels=["물고기", "스패니얼", "카세트", "전기톱", "교회", "호른", "쓰레기차", "주유기", "골프공", "낙하산"],
+        image=("JPEG", 128), thumb=150,
+        backends={"PyTorch": ("imagenette_torch.py", ".venv/bin/python -u imagenette_torch.py --json {args}")},
+        options=[
+            Opt("model", "모델", "choice", "resnet18", "--model", values=["resnet18", "resnet50"]),
+            Opt("pretrained", "전이학습 (ImageNet 사전학습 가중치)", "check", False, "--pretrained"),
+            Opt("epochs", "Epoch 수", "int", "20", "--epochs", lo=1, hi=100),
+            Opt("batch", "배치 크기", "choice", "64", "--batch-size", values=["16", "32", "64", "128"]),
+            Opt("lr", "학습률", "choice", "0.001", "--lr", values=LEARNING_RATES),
+            Opt("size", "이미지 크기 (px)", "choice", "224", "--img-size", values=["128", "160", "224", "288"]),
         ]),
 }
 
@@ -216,7 +232,7 @@ class LearningCurve(Chart):
 
 
 class ConfusionMatrix(Chart):
-    title = "혼동 행렬 (테스트 데이터 10,000장)"
+    title = "혼동 행렬 (테스트 데이터)"
 
     def __init__(self, master, scale, labels, noun, on_cell=None):
         super().__init__(master, scale)
@@ -227,6 +243,8 @@ class ConfusionMatrix(Chart):
 
     def set(self, cm):
         self.cm = cm
+        total = sum(map(sum, cm)) if cm else 0
+        self.title = f"혼동 행렬 (테스트 데이터 {total:,}장)" if cm else "혼동 행렬 (테스트 데이터)"
         self.redraw()
 
     def cell_at(self, x, y):
@@ -310,9 +328,11 @@ class MistakesView(ttk.Frame):
         self.items, self.total, self.filter = [], None, None
         self.current, self.shown = [], 0  # filtered + sorted items, and how many have tiles
         self.tiles, self.photos, self.cols = [], [], 0
-        self.zoom = max(3, round(3.5 * scale * 28 / self.side))
+        self.disp = self.px(profile.thumb)  # thumbnail side on screen
+        # Tiny images (MNIST, CIFAR) are enlarged with visible pixels; photos are resampled smoothly.
+        self.resample = Image.NEAREST if self.side * 2 <= self.disp else Image.LANCZOS
         self.stacked = max(len(l) for l in self.labels) > 1  # long class names: true/pred on separate lines
-        self.tile_w = max(self.side * self.zoom, self.px(130)) + self.px(16)
+        self.tile_w = max(self.disp, self.px(130)) + self.px(16)
         self.sorts = {
             "확신도 높은 순": lambda m: -m["conf"],
             f"실제 {self.noun} 순": lambda m: (m["true"], m["pred"], -m["conf"]),
@@ -417,8 +437,12 @@ class MistakesView(ttk.Frame):
     def make_tile(self, m):
         bg = COLORS["panel"]
         f = tk.Frame(self.inner, bg=bg, padx=self.px(8), pady=self.px(8))
-        img = Image.frombytes(self.mode, (self.side, self.side), base64.b64decode(m["img"]))
-        photo = ImageTk.PhotoImage(img.resize((self.side * self.zoom,) * 2, Image.NEAREST))
+        data = base64.b64decode(m["img"])
+        if m.get("fmt") == "jpeg":
+            img = Image.open(io.BytesIO(data)).convert("RGB")
+        else:
+            img = Image.frombytes(self.mode, (self.side, self.side), data)
+        photo = ImageTk.PhotoImage(img.resize((self.disp, self.disp), self.resample))
         self.photos.append(photo)
         tk.Label(f, image=photo, bd=0).pack()
         true_txt, pred_txt = f"실제 {self.labels[m['true']]}", f"예측 {self.labels[m['pred']]}"
@@ -608,7 +632,7 @@ class App:
         for o in self.p.options:
             value = self.vars[o.key].get()
             if o.kind == "check":
-                if not value:
+                if value != o.default:
                     args.append(o.flag)
                 continue
             if o.kind in ("int", "float"):
@@ -643,7 +667,7 @@ class App:
         self.progress.configure(value=0)
         self.log_clear()
         self.log_write("$ " + cmd.replace(project, PROJECT_SHOWN, 1))
-        self.total_steps, self.got_result, self.stopping = None, False, False
+        self.total_steps, self.got_result, self.stopping, self.out_of_memory = None, False, False, False
         self.set_running(True)
         self.set_status("WSL과 모델을 준비하는 중… (처음 실행은 10초 정도 걸릴 수 있어요)")
         self.t_start = time.time()
@@ -697,6 +721,8 @@ class App:
 
     def handle_line(self, line):
         if not line.startswith("@@"):
+            if "OutOfMemoryError" in line or "out of memory" in line:
+                self.out_of_memory = True
             if line.strip() and not any(s in line for s in LOG_NOISE):
                 self.log_write(line)
             return
@@ -750,6 +776,13 @@ class App:
         elif self.stopping:
             self.set_status("중지했어요.")
             self.acc_label.configure(text="—")
+        elif self.out_of_memory:
+            self.set_status("GPU 메모리가 부족해서 멈췄어요. 배치 크기나 이미지 크기를 줄여 보세요.")
+            self.acc_label.configure(text="오류", foreground=COLORS["bad"])
+            messagebox.showerror("GPU 메모리 부족",
+                                 "GPU 메모리(12GB)가 부족해서 학습이 멈췄어요.\n"
+                                 "배치 크기나 이미지 크기를 줄이거나, 더 작은 모델을 골라 다시 시도해 보세요.",
+                                 parent=self.root)
         else:
             self.set_status(f"오류로 종료됐어요 (코드 {code}). 아래 로그를 확인하세요.")
             self.acc_label.configure(text="오류", foreground=COLORS["bad"])

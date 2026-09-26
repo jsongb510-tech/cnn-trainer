@@ -15,18 +15,25 @@ def emit(kind, **data):
     print("@@" + json.dumps({"type": kind, **data}), flush=True)
 
 
-def mistakes(images, y_true, probs, limit=MAX_MISTAKES):
+def mistakes(images, y_true, probs, limit=MAX_MISTAKES, encode=None):
     """(count, items) for misclassified images, most confidently wrong first.
 
     images: uint8 array (N, H, W) or (N, H, W, C); pixels are sent as base64 raw bytes.
+    encode: for large photos, a function index -> JPEG bytes used instead of `images`;
+            those items carry fmt="jpeg".
     """
     y_true = np.asarray(y_true)
     y_pred = probs.argmax(axis=1)
     wrong = np.flatnonzero(y_pred != y_true)
     wrong = wrong[np.argsort(-probs[wrong, y_pred[wrong]])]
+
+    def pixels(i):
+        data = encode(i) if encode else np.ascontiguousarray(images[i], dtype=np.uint8).tobytes()
+        return base64.b64encode(data).decode("ascii")
+
     return int(len(wrong)), [
         {"index": int(i), "true": int(y_true[i]), "pred": int(y_pred[i]),
          "conf": float(probs[i, y_pred[i]]), "true_prob": float(probs[i, y_true[i]]),
-         "img": base64.b64encode(np.ascontiguousarray(images[i], dtype=np.uint8).tobytes()).decode("ascii")}
+         "img": pixels(i), **({"fmt": "jpeg"} if encode else {})}
         for i in wrong[:limit]
     ]

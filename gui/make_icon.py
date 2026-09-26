@@ -1,6 +1,7 @@
 """Generate the window icons:
-mnist_gui.ico   - a pixelated handwritten-style "7" on a blue rounded square
-cifar10_gui.ico - a 3x3 grid of colorful image tiles on a teal rounded square
+mnist_gui.ico      - a pixelated handwritten-style "7" on a blue rounded square
+cifar10_gui.ico    - a 3x3 grid of colorful image tiles on a teal rounded square
+imagenette_gui.ico - a photo (sun over mountains) on an orange rounded square
 """
 from pathlib import Path
 
@@ -58,9 +59,23 @@ def cifar10_icon():
     return img
 
 
+def imagenette_icon():
+    img, d = rounded_base((234, 88, 12, 255))
+    x0, y0, x1, y1 = 44, 60, SIZE - 44, SIZE - 60  # white photo frame
+    d.rounded_rectangle((x0, y0, x1, y1), radius=14, fill=(255, 255, 255, 255))
+    m = 14
+    d.rounded_rectangle((x0 + m, y0 + m, x1 - m, y1 - m), radius=6, fill=(186, 230, 253, 255))  # sky
+    d.ellipse((x1 - m - 52, y0 + m + 12, x1 - m - 16, y0 + m + 48), fill=(250, 204, 21, 255))  # sun
+    base_y = y1 - m
+    d.polygon([(x0 + m, base_y), (x0 + m + 50, y0 + m + 44), (x0 + m + 100, base_y)], fill=(22, 163, 74, 255))
+    d.polygon([(x0 + m + 60, base_y), (x0 + m + 110, y0 + m + 64), (x1 - m, base_y)], fill=(21, 128, 61, 255))
+    return img
+
+
 def main():
     here = Path(__file__).resolve().parent
-    for name, make in (("mnist_gui", mnist_icon), ("cifar10_gui", cifar10_icon)):
+    for name, make in (("mnist_gui", mnist_icon), ("cifar10_gui", cifar10_icon),
+                       ("imagenette_gui", imagenette_icon)):
         out = here / f"{name}.ico"
         make().save(out, sizes=ICO_SIZES)
         print(f"wrote {out}")
