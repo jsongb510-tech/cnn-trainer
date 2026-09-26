@@ -14,7 +14,7 @@ Windows 11 + WSL2(Ubuntu)의 NVIDIA GPU로 MNIST 손글씨 숫자 분류 CNN을 
 | 파일 | 내용 |
 |---|---|
 | `mnist.py` | 순수 PyTorch CNN. 5 epoch에 테스트 정확도 약 99.1% |
-| `mnist2.py` | 같은 CNN의 Keras 3 버전. 백엔드는 `KERAS_BACKEND`(torch / tensorflow)로 선택. 혼동 행렬과 정확도 출력 |
+| `mnist2.py` | 같은 CNN의 Keras 3 버전. 백엔드는 켜진 가상환경에 맞춰 자동 선택(`.venv` → torch, `.venv-tf` → tensorflow)되며 `KERAS_BACKEND`로 직접 지정도 가능. 혼동 행렬과 정확도 출력 |
 | `max_resolution.py` | GPU 메모리로 처리 가능한 최대 입력 해상도 측정 (ResNet-50, ConvNeXt-Tiny / 추론·학습) |
 | `gui/mnist_gui.pyw` | `mnist2.py`를 WSL에서 실행하고 결과를 보여주는 Windows 창 프로그램 (tkinter) |
 | `gui/make_icon.py` | 창 프로그램 아이콘(`mnist_gui.ico`) 생성 |
@@ -92,7 +92,7 @@ python mnist2.py --epochs 10 --lr 0.0003         # Keras (PyTorch 백엔드)
 python max_resolution.py                         # 최대 해상도 측정
 
 source .venv-tf/bin/activate
-KERAS_BACKEND=tensorflow python mnist2.py        # Keras (TensorFlow 백엔드)
+python mnist2.py                                 # Keras (TensorFlow 백엔드 자동 선택)
 ```
 
 `mnist2.py` 옵션: `--epochs`, `--batch-size`, `--lr`, `--dropout`, `--json`(창 프로그램용 출력).

@@ -1,11 +1,14 @@
 import argparse
 import base64
+import importlib.util
 import json
 import os
 import time
 
-# Default to the PyTorch backend; override with e.g. KERAS_BACKEND=tensorflow python mnist2.py
-os.environ.setdefault("KERAS_BACKEND", "torch")
+# Backend: KERAS_BACKEND if set, otherwise whichever of torch / tensorflow the active venv has
+# (.venv has torch, .venv-tf has tensorflow). Override with e.g. KERAS_BACKEND=tensorflow python mnist2.py
+if "KERAS_BACKEND" not in os.environ:
+    os.environ["KERAS_BACKEND"] = "torch" if importlib.util.find_spec("torch") else "tensorflow"
 
 import keras
 import numpy as np
