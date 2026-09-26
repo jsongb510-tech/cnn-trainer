@@ -105,3 +105,7 @@ KERAS_BACKEND=tensorflow python mnist2.py        # Keras (TensorFlow 백엔드)
 | ConvNeXt-Tiny | 7744 px | 2880 px | 1024 px |
 
 1000×1000 이미지는 ResNet-50으로 배치 11장까지 학습 가능 (약 29장/초).
+
+## 라이선스
+
+[MIT License](LICENSE) — 자유롭게 사용·수정·재배포할 수 있습니다 (저작권 표시와 라이선스 문구 유지).
