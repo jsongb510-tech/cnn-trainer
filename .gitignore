@@ -9,3 +9,7 @@ __pycache__/
 data/
 *.keras
 *.pt
+
+# Jupyter
+.ipynb_checkpoints/
+Untitled*.ipynb

@@ -36,6 +36,15 @@ Windows 11 + WSL2(Ubuntu)의 NVIDIA GPU로 **MNIST**(손글씨 숫자, 28px), **
 > 두 데이터셋의 클래스는 모두 ImageNet의 일부라서, 사전학습 가중치는 이미 비슷한 사진을 본 상태입니다.
 > 전이학습 정확도가 특히 높게 나오는 이유이기도 합니다. 클래스끼리 비슷한 Imagewoof에서는 격차가 더 커집니다.
 
+### MNIST 예측 노트북 (`mnist_predict.ipynb`)
+
+`mnist.py`로 학습한 `mnist_cnn.pt`를 불러와 결과를 분석하는 Jupyter 노트북입니다.
+정확도, 무작위 예측, 틀린 이미지, 혼동 행렬(scikit-learn / seaborn), 숫자별 성적표, 혼동 행렬 한 칸 들여다보기(드롭다운)까지 들어 있습니다.
+
+| 틀린 것만 강조한 혼동 행렬 (대각선 가림) | "실제 9 → 예측 4" 칸의 이미지 (윗줄은 맞힌 9) |
+|---|---|
+| ![오답 혼동 행렬](docs/notebook_errors_heatmap.png) | ![9를 4로 틀린 이미지](docs/notebook_cell_9to4.png) |
+
 ## 구성
 
 | 파일 | 내용 |
@@ -46,6 +55,7 @@ Windows 11 + WSL2(Ubuntu)의 NVIDIA GPU로 **MNIST**(손글씨 숫자, 28px), **
 | `cifar10_keras.py` | 같은 모델의 Keras 3 버전 (TensorFlow 엔진 권장: PyTorch 엔진에서는 `RandomTranslation` 층이 매우 느림) |
 | `imagenette_torch.py` | Imagenette / Imagewoof(`--dataset imagewoof`)용 ResNet-18/50. 처음부터 학습 또는 `--pretrained`로 전이학습(새 분류층은 학습률 그대로, 기존 층은 1/10). 첫 실행 시 데이터(320px 버전, 각 약 330MB) 자동 다운로드 |
 | `max_resolution.py` | GPU 메모리로 처리 가능한 최대 입력 해상도 측정 (ResNet-50, ConvNeXt-Tiny / 추론·학습) |
+| `mnist_predict.ipynb` | 학습된 MNIST 모델 분석 노트북 (먼저 `python mnist.py`로 `mnist_cnn.pt`를 만들어 두어야 함) |
 | `jsonlog.py` | 학습 스크립트가 창 프로그램에 진행 상황을 보내는 공통 코드 (`--json` 옵션) |
 | `gui/trainer_gui.py` | 창 프로그램 본체 (tkinter). 데이터셋별 설정(`PROFILES`)만 다름 |
 | `gui/mnist_gui.pyw`, `gui/cifar10_gui.pyw`, `gui/imagenette_gui.pyw`, `gui/imagewoof_gui.pyw` | 각 학습기 실행 파일 (`mnist2.py` / `cifar10_torch.py` / `imagenette_torch.py`를 WSL에서 실행) |
@@ -122,6 +132,32 @@ C:\path\to\gui-venv\Scripts\pythonw.exe \\wsl$\Ubuntu-24.04\home\<user>\cnn-trai
 
 바탕화면 바로 가기를 만들 때는 위 명령을 대상으로, 아이콘은 `gui/` 폴더의 같은 이름 `.ico` 파일을 지정하면 됩니다
 (아이콘 파일은 Windows 폴더에 복사해 두는 편이 안정적입니다).
+
+### 3. Jupyter (노트북)
+
+JupyterLab은 별도 환경에 설치하고, 위의 두 환경은 **커널**로 등록합니다.
+노트북에서 쓰는 데이터 분석 패키지도 함께 설치합니다.
+
+```bash
+uv venv --python 3.12 ~/.venvs/jupyter
+uv pip install --python ~/.venvs/jupyter/bin/python jupyterlab notebook ipywidgets ipympl
+
+for v in .venv .venv-tf; do
+  uv pip install --python $v/bin/python ipykernel ipywidgets ipympl \
+    pandas polars pyarrow scipy statsmodels scikit-learn matplotlib seaborn plotly openpyxl tqdm tabulate
+done
+.venv/bin/python    -m ipykernel install --user --name cnn-torch --display-name "Python (PyTorch)"
+.venv-tf/bin/python -m ipykernel install --user --name cnn-tf    --display-name "Python (TensorFlow)"
+
+~/.venvs/jupyter/bin/jupyter lab --no-browser   # 출력된 http://127.0.0.1:8888/... 주소를 Windows 브라우저에서 열기
+```
+
+커널은 `activate`를 거치지 않으므로, TensorFlow 커널이 GPU를 찾으려면
+`~/.local/share/jupyter/kernels/cnn-tf/kernel.json`에 위 `LD_LIBRARY_PATH` 값을 `"env"`로 넣어 줍니다.
+
+```json
+"env": {"LD_LIBRARY_PATH": "<.venv-tf>/lib/python3.12/site-packages/nvidia/cublas/lib:...(nvidia/*/lib 전부)"}
+```
 
 ## 명령줄에서 실행
 
